@@ -1,139 +1,156 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { mockSites } from '../data/mockData';
+// src/contexts/AuthContext.tsx
+import React, { createContext, useContext, useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 
-// Define types
-export type UserRole = 'operator' | 'admin';
+export type UserRole = "operator" | "admin";
 
 export interface User {
   id: string;
-  name: string;
-  email: string;
+  username: string;
   role: UserRole;
   siteId?: string;
   siteName?: string;
+  name?: string;
 }
 
-interface AuthContextType {
+export interface AuthContextType {
   user: User | null;
+  token: string | null;
   isLoading: boolean;
-  login: (email: string, password: string, siteId?: string) => Promise<void>;
+  login: (username: string, password: string, siteId?: string) => Promise<void>;
   logout: () => void;
   isAuthenticated: boolean;
+  sites: { site_id: string; site_name: string }[]; // changed from operatorSites
+  setSites: React.Dispatch<
+    React.SetStateAction<{ site_id: string; site_name: string }[]>
+  >;
+  requiresSiteSelection: boolean;
+  setRequiresSiteSelection: React.Dispatch<React.SetStateAction<boolean>>;
 }
 
-// Create context
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Mock users for demo (would come from API in production)
-const MOCK_USERS = [
-  {
-    id: '1',
-    email: 'admin@aquaguard.com',
-    password: 'admin123',
-    name: 'Admin User',
-    role: 'admin' as UserRole,
-  },
-  {
-    id: '2',
-    email: 'operator@aquaguard.com',
-    password: 'operator123',
-    name: 'John Operator',
-    role: 'operator' as UserRole,
-  },
-];
-
-// Provider component
-export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
+  children,
+}) => {
   const [user, setUser] = useState<User | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [token, setToken] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [sites, setSites] = useState<{ site_id: string; site_name: string }[]>(
+    []
+  );
+  const [requiresSiteSelection, setRequiresSiteSelection] = useState(false);
+
   const navigate = useNavigate();
 
-  // Check for saved user on mount
   useEffect(() => {
-    const savedUser = localStorage.getItem('aquaguard_user');
-    if (savedUser) {
-      setUser(JSON.parse(savedUser));
-    }
-    setIsLoading(false);
+    const savedUser = localStorage.getItem("aquaguard_user");
+    const savedToken = localStorage.getItem("aquaguard_token");
+    const savedSites = localStorage.getItem("aquaguard_sites"); // updated key name
+    const savedRequiresSiteSelection = localStorage.getItem(
+      "aquaguard_requires_site_selection"
+    );
+
+    if (savedUser) setUser(JSON.parse(savedUser));
+    if (savedToken) setToken(savedToken);
+    if (savedSites) setSites(JSON.parse(savedSites));
+    if (savedRequiresSiteSelection)
+      setRequiresSiteSelection(savedRequiresSiteSelection === "true");
   }, []);
 
-  // Login function
-  const login = async (email: string, password: string, siteId?: string) => {
+  const login = async (username: string, password: string, siteId?: string) => {
     setIsLoading(true);
-    
-    // Simulate API call with timeout
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    const foundUser = MOCK_USERS.find(
-      u => u.email === email && u.password === password
-    );
-    
-    if (!foundUser) {
-      setIsLoading(false);
-      throw new Error('Invalid email or password');
-    }
-    
-    // For operators, require site selection
-    if (foundUser.role === 'operator' && !siteId) {
-      setIsLoading(false);
-      throw new Error('Site selection required for operators');
-    }
+    setRequiresSiteSelection(false);
+    try {
+      const formData = new URLSearchParams();
+      formData.append("username", username);
+      formData.append("password", password);
+      if (siteId) formData.append("site_id", siteId);
 
-    // Add site information for operators
-    let authenticatedUser: User;
-    if (foundUser.role === 'operator' && siteId) {
-      const site = mockSites.find(s => s.id === siteId);
-      if (!site) {
-        setIsLoading(false);
-        throw new Error('Invalid site selected');
+      const res = await fetch("http://localhost:8000/token", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: formData.toString(),
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || "Login failed");
       }
-      authenticatedUser = {
-        ...foundUser,
-        siteId,
-        siteName: site.name,
-      };
-    } else {
-      // Remove password before saving user
-      const { password: _, ...userWithoutPassword } = foundUser;
-      authenticatedUser = userWithoutPassword;
-    }
-    
-    setUser(authenticatedUser);
-    localStorage.setItem('aquaguard_user', JSON.stringify(authenticatedUser));
-    setIsLoading(false);
-    
-    // Navigate based on role
-    if (authenticatedUser.role === 'admin') {
-      navigate('/admin');
-    } else {
-      navigate('/operator');
+
+      const data = await res.json();
+
+      if (data.requires_site_selection) {
+        // Operator login step 1 - get site list
+        setSites(data.sites || []);
+        localStorage.setItem("aquaguard_sites", JSON.stringify(data.sites));
+        setRequiresSiteSelection(true);
+        localStorage.setItem("aquaguard_requires_site_selection", "true");
+      } else if (data.token) {
+        // Successful login with token (admin or operator after site selected)
+        setToken(data.token);
+        const role = data.role || (siteId ? "operator" : "admin"); // fallback role guess
+        const loggedInUser: User = { id: data.id, username, role, siteId };
+        setUser(loggedInUser);
+        localStorage.setItem("aquaguard_user", JSON.stringify(loggedInUser));
+        localStorage.setItem("aquaguard_token", data.token);
+        setSites([]);
+        setRequiresSiteSelection(false);
+        localStorage.removeItem("aquaguard_sites");
+        localStorage.removeItem("aquaguard_requires_site_selection");
+
+        if (role === "admin") navigate("/admin");
+        else navigate("/operator");
+      }
+    } catch (error: any) {
+      setSites([]);
+      setRequiresSiteSelection(false);
+      localStorage.removeItem("aquaguard_sites");
+      localStorage.removeItem("aquaguard_requires_site_selection");
+      throw error;
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  // Logout function
   const logout = () => {
     setUser(null);
-    localStorage.removeItem('aquaguard_user');
-    navigate('/login');
+    setToken(null);
+    setSites([]);
+    setRequiresSiteSelection(false);
+    localStorage.removeItem("aquaguard_user");
+    localStorage.removeItem("aquaguard_token");
+    localStorage.removeItem("aquaguard_sites");
+    localStorage.removeItem("aquaguard_requires_site_selection");
+    navigate("/login");
   };
 
-  const value = {
-    user,
-    isLoading,
-    login,
-    logout,
-    isAuthenticated: !!user,
-  };
-
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider
+      value={{
+        user,
+        token,
+        isLoading,
+        login,
+        logout,
+        isAuthenticated: !!user,
+        sites,
+        setSites,
+        requiresSiteSelection,
+        setRequiresSiteSelection,
+      }}
+    >
+      {children}
+    </AuthContext.Provider>
+  );
 };
 
-// Custom hook for using auth context
-export const useAuth = () => {
+export const useAuth = (): AuthContextType => {
   const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
+  if (!context) {
+    throw new Error("useAuth must be used within AuthProvider");
   }
   return context;
 };

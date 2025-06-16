@@ -1,10 +1,5 @@
 import { STPSite, Operator, FlowmeterReading, WaterQualityReading, Alert } from '../types';
 
-// Helper function to convert L/min to m³/hr
-const convertToM3Hr = (value: number): number => {
-  return Number((value * 0.06).toFixed(2));
-};
-
 // Helper to generate dates in the past
 const getPastDate = (daysAgo: number): string => {
   const date = new Date();
@@ -12,49 +7,17 @@ const getPastDate = (daysAgo: number): string => {
   return date.toISOString();
 };
 
-// Convert m³/hr to m³/day
-const calculateDailyFlow = (currentReading: number, previousReading: number): number => {
-  return Number((currentReading - previousReading).toFixed(1));
-};
-
-// Mock data generation for flow readings
-const generateFlowReadings = () => {
-  let lastReading = 46000;
-  const readings = [];
-  
-  for (let i = 7; i >= 0; i--) {
-    const currentReading = lastReading + Math.random() * 150;
-    lastReading = currentReading;
-    readings.push({
-      date: getPastDate(i),
-      value: Number(currentReading.toFixed(2))
-    });
-  }
-  
-  return readings;
-};
-
-// Generate historical flow data for charts (7 days)
-export const generateHistoricalFlowData = (siteId: string) => {
-  const readings = generateFlowReadings();
-  const dailyFlows = [];
-  
-  for (let i = 1; i < readings.length; i++) {
-    dailyFlows.push({
-      date: readings[i].date,
-      value: calculateDailyFlow(readings[i].value, readings[i-1].value)
-    });
-  }
-  
-  return dailyFlows;
+// Convert L/min to m³/hr
+const convertToM3Hr = (lpm: number): number => {
+  return Number((lpm * 0.06).toFixed(2)); // L/min * 60min/hr * 1m³/1000L
 };
 
 // Mock STP Sites
 export const mockSites: STPSite[] = [
   {
     id: 'site1',
-    name: 'North Plant STP',
-    location: 'Industrial Zone, North City',
+    name: 'Hotel Taj',
+    location: 'Hotel Zone, Mumbai City',
     capacity: convertToM3Hr(500), // 30 m³/hr
     status: 'active',
     lastReading: convertToM3Hr(435.2),
@@ -63,8 +26,8 @@ export const mockSites: STPSite[] = [
   },
   {
     id: 'site2',
-    name: 'South Basin Treatment',
-    location: 'South Ridge, Industrial Area',
+    name: 'Phoenix mall',
+    location: 'Pimpri Chinchwad,Mall Area',
     capacity: convertToM3Hr(750), // 45 m³/hr
     status: 'active',
     lastReading: convertToM3Hr(612.5),
@@ -110,7 +73,7 @@ export const mockOperators: Operator[] = [
     name: 'John Operator',
     email: 'operator@aquaguard.com',
     siteId: 'site1',
-    siteName: 'North Plant STP',
+    siteName: 'Hotel Taj',
     status: 'active',
     lastActive: getPastDate(0)
   },
@@ -119,7 +82,7 @@ export const mockOperators: Operator[] = [
     name: 'Sarah Engineer',
     email: 'sarah.e@aquaguard.com',
     siteId: 'site2',
-    siteName: 'South Basin Treatment',
+    siteName: 'P',
     status: 'active',
     lastActive: getPastDate(0)
   },
@@ -310,3 +273,31 @@ export const mockAlerts: Alert[] = [
     acknowledged: false
   }
 ];
+
+// Generate historical flow data for charts (7 days)
+export const generateHistoricalFlowData = (siteId: string) => {
+  const data = [];
+  for (let i = 6; i >= 0; i--) {
+    const date = new Date();
+    date.setDate(date.getDate() - i);
+    
+    let baseValue = 0;
+    switch (siteId) {
+      case 'site1': baseValue = convertToM3Hr(430); break;
+      case 'site2': baseValue = convertToM3Hr(610); break;
+      case 'site3': baseValue = convertToM3Hr(340); break;
+      case 'site4': baseValue = convertToM3Hr(520); break;
+      case 'site5': baseValue = convertToM3Hr(800); break;
+      default: baseValue = convertToM3Hr(500);
+    }
+    
+    // Add some random variation
+    const value = baseValue + (Math.random() * convertToM3Hr(50) - convertToM3Hr(25));
+    
+    data.push({
+      date: date.toISOString().split('T')[0],
+      value: Number(value.toFixed(2))
+    });
+  }
+  return data;
+};

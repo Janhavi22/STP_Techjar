@@ -1,10 +1,9 @@
-import { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Eye, EyeOff, Lock, Mail, Building } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { Logo } from '../../components/ui/Logo';
 import toast from 'react-hot-toast';
-import { mockSites } from '../../data/mockData';
 
 const LoginPage = () => {
   const [email, setEmail] = useState('');
@@ -12,35 +11,48 @@ const LoginPage = () => {
   const [selectedSite, setSelectedSite] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const { login } = useAuth();
+  const [operatorSites, setOperatorSites] = useState<{ site_id: string; site_name: string }[]>([]);
+  const { login, sites, requiresSiteSelection } = useAuth();
   const navigate = useNavigate();
+
+  // When email changes, reset selected site and update operatorSites if email matches
+  useEffect(() => {
+    setSelectedSite('');
+    if (email && sites && requiresSiteSelection) {
+      setOperatorSites(sites);
+    } else {
+      setOperatorSites([]);
+    }
+  }, [email, sites, requiresSiteSelection]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!email || !password) {
       toast.error('Please enter both email and password');
       return;
     }
 
-    if (email === 'operator@aquaguard.com' && !selectedSite) {
-      toast.error('Please select a plant');
+    // For operator, site must be selected
+    if (requiresSiteSelection && !selectedSite) {
+      toast.error('Please select a site');
       return;
     }
-    
+
     setIsSubmitting(true);
-    
+
     try {
       await login(email, password, selectedSite);
-    } catch (error) {
+      // navigation handled inside login function
+    } catch (error: any) {
       console.error('Login error:', error);
-      toast.error('Invalid credentials. Please try again.');
+      toast.error(error?.message || 'Invalid credentials. Please try again.');
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  // Helper for demo login
+  // Demo login buttons for convenience
   const loginAsDemo = async (role: 'admin' | 'operator') => {
     setIsSubmitting(true);
     try {
@@ -48,7 +60,7 @@ const LoginPage = () => {
         await login('admin@aquaguard.com', 'admin123');
       } else {
         if (!selectedSite) {
-          toast.error('Please select a plant first');
+          toast.error('Please select a site first');
           setIsSubmitting(false);
           return;
         }
@@ -102,7 +114,8 @@ const LoginPage = () => {
                   </div>
                 </div>
 
-                {email === 'operator@aquaguard.com' && (
+                {/* Show site dropdown only if user is operator and sites are provided */}
+                {requiresSiteSelection && operatorSites.length > 0 && (
                   <div>
                     <label htmlFor="site" className="block text-sm font-medium text-slate-700">
                       Select Plant
@@ -119,9 +132,9 @@ const LoginPage = () => {
                         className="block w-full rounded-md border border-slate-300 py-2 pl-10 shadow-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 sm:text-sm"
                       >
                         <option value="">Select a plant</option>
-                        {mockSites.map(site => (
-                          <option key={site.id} value={site.id}>
-                            {site.name}
+                        {operatorSites.map((site) => (
+                          <option key={site.site_id} value={site.site_id}>
+                            {site.site_name}
                           </option>
                         ))}
                       </select>
@@ -152,6 +165,7 @@ const LoginPage = () => {
                       type="button"
                       className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400 hover:text-slate-600"
                       onClick={() => setShowPassword(!showPassword)}
+                      tabIndex={-1}
                     >
                       {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                     </button>
@@ -172,7 +186,10 @@ const LoginPage = () => {
                   </div>
 
                   <div className="text-sm">
-                    <button type="button" className="font-medium text-primary-600 hover:text-primary-500">
+                    <button
+                      type="button"
+                      className="font-medium text-primary-600 hover:text-primary-500"
+                    >
                       Forgot your password?
                     </button>
                   </div>
@@ -230,7 +247,7 @@ const LoginPage = () => {
       <div className="hidden relative w-1/2 lg:block">
         <div className="absolute inset-0 flex h-full items-center justify-center bg-primary-700">
           <div className="max-w-2xl px-8 text-center text-white">
-            <h2 className="text-3xl font-bold mb-6">AquaGuard STP Monitoring</h2>
+            <h2 className="text-3xl font-bold mb-6">Techjar STP Monitoring</h2>
             <p className="text-lg mb-8">
               Revolutionizing sewage treatment plant monitoring with advanced OCR, AI-powered water quality analysis, and real-time alerts.
             </p>
